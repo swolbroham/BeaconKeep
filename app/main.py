@@ -8,3 +8,4 @@ def health_check():
         "status": "healthy",
         "service": "BeaconKeep"
     }
+
