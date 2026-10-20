@@ -1,7 +1,17 @@
 from app.main import app
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
+from app.db.session import get_db
 
+class FailingSession:
+    def execute(self, statement):
+        raise OperationalError(
+            statement,
+            None,
+            Exception("Simulated database connection error")
+        )
+            
 
 client = TestClient(app)
 
@@ -18,7 +28,7 @@ def test_health_response():
         "service": "BeaconKeep"
     }
 
-# Endpoint must return an empty JSON object
+
 def test_health_db():
     response = client.get("/health/db")
     assert response.status_code == 200
@@ -27,12 +37,19 @@ def test_health_db():
         "database": "connected"
     }
 
+def override_get_db():
+    return FailingSession()
 
 # Endpoint failure behavior
 def test_failed_db():
-    response = client.get("/health/db")
-    assert response.status_code == 503
-    assert response.json() == {
-        "status": "unhealthy",
-        "database": "disconnected"
-    }
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        response = client.get("/health/db")
+        assert response.status_code == 503
+        assert response.json() == {
+            "status": "unhealthy",
+            "database": "disconnected"
+        }
+    finally:
+        del app.dependency_overrides[get_db]
+    
