@@ -17,9 +17,18 @@ class Monitor(Base):
 
 
     __table_args__ = (
-        CheckConstraint("check_interval_seconds >= 5 AND check_interval_seconds <= 3600"), 
-        CheckConstraint("timeout_seconds >= 1 AND timeout_seconds < check_interval_seconds"),
-        CheckConstraint("200 <= expected_status_code AND expected_status_code <= 599")
+        CheckConstraint(
+            "check_interval_seconds >= 5 AND check_interval_seconds <= 3600",
+            name = "ck_monitors_check_interval_range"
+            ), 
+        CheckConstraint(
+            "timeout_seconds >= 1 AND timeout_seconds < check_interval_seconds", 
+            name = "ck_monitors_timeout_range"
+            ),
+        CheckConstraint(
+            "200 <= expected_status_code AND expected_status_code <= 599",
+            name = "ck_monitors_expected_status_code_range"
+            )
         )
 
     
