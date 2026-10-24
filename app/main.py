@@ -7,8 +7,11 @@ from sqlalchemy.exc import OperationalError
 
 from app.db.session import get_db
 from fastapi.responses import JSONResponse
+from app.routes.monitors import router
+
 
 app = FastAPI() # initializer to FastAPI
+app.include_router(router)
 
 @app.get("/health") # Create slug to run health check
 def health_check():
@@ -31,5 +34,4 @@ def db_health_check(db:Annotated[Session, Depends(get_db)]):
             "status": "unhealthy",
             "database": "disconnected"
         }, status_code = 503)
-        
-        
+

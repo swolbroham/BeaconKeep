@@ -1,7 +1,9 @@
 from app.models.monitor import Monitor
+from app.schemas.monitor import MonitorRead
 from app.db.session import SessionLocal
 from sqlalchemy.exc import IntegrityError, DataError
 import pytest
+
 
 # this creates a temp session for the testing to be used (kinda like when qa uses fake data, except this is a fake db session)
 @pytest.fixture
@@ -196,3 +198,13 @@ def test_monitor_accepts_duplicate_names(db_session):
     assert monitor2.id is not None
     assert monitor1.id != monitor2.id
     assert monitor1.name == monitor2.name
+
+def test_monitor_read_from_model_attributes(db_session):
+    monitor = Monitor(url = "https://example.com/health")
+    db_session.add(monitor)
+    db_session.flush()
+    monitor_read = MonitorRead.model_validate(monitor)
+    assert monitor_read.id == monitor.id
+    assert str(monitor_read.url) == monitor.url
+    assert monitor_read.created_at == monitor.created_at
+    assert monitor_read.updated_at == monitor.updated_at
