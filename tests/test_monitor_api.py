@@ -5,7 +5,7 @@ from app.db.session import engine, get_db
 from sqlalchemy.orm import Session
 from app.models.monitor import Monitor
 from sqlalchemy import func, select
-
+from datetime import datetime
 
 
 
@@ -173,17 +173,17 @@ def test_create_monitor_rejects_default_timeout_equal_to_interval(client, db_ses
 # ------------------------------------------------------------------------------------
 ## Testing get requests for read_monitor
 # ------------------------------------------------------------------------------------
+# # this is a simple test using default config to test if it returns 200
+# def test_get_monitor_returns_saved_monitor(client, db_session):
+#     monitor = Monitor(url = "https://example.com/health")
+#     db_session.add(monitor)
+#     db_session.flush()
 
-def test_get_monitor_returns_saved_monitor(client, db_session):
-    monitor = Monitor(url = "https://example.com/health")
-    db_session.add(monitor)
-    db_session.flush()
-
-    response = client.get(f"/monitors/{monitor.id}")
-    assert response.status_code == 200
-    body = response.json()
-    assert body["id"] == monitor.id
-    assert body["url"] == monitor.url
+#     response = client.get(f"/monitors/{monitor.id}")
+#     assert response.status_code == 200
+#     body = response.json()
+#     assert body["id"] == monitor.id
+#     assert body["url"] == monitor.url
 
 def test_get_monitor_returns_404_when_missing(client, db_session):
     #arrange - db does not have value from index (n)
@@ -196,3 +196,29 @@ def test_get_monitor_returns_404_when_missing(client, db_session):
     response = client.get(f"/monitors/{missing_id}")
     assert response.status_code == 404
     assert response.json() == {"detail": "Monitor not found"}
+
+def test_get_monitor_returns_200_when_existing(client, db_session):
+    monitor = Monitor(
+        url= "https://example.com/payments/health",
+        name= "Payments API",
+        check_interval_seconds= 120,
+        timeout_seconds= 10,
+        expected_status_code= 204,
+        is_enabled= False
+    )
+    db_session.add(monitor)
+    db_session.flush()
+    existing_id = monitor.id
+
+    response = client.get(f"/monitors/{existing_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body['id'] == existing_id
+    assert body['url'] == monitor.url
+    assert body['name'] == monitor.name
+    assert body['is_enabled'] is monitor.is_enabled
+    assert body['check_interval_seconds'] == monitor.check_interval_seconds
+    assert body['timeout_seconds'] == monitor.timeout_seconds
+    assert body['expected_status_code'] == monitor.expected_status_code
+    assert datetime.fromisoformat(body['created_at']) == monitor.created_at
+    assert datetime.fromisoformat(body['updated_at']) == monitor.updated_at
