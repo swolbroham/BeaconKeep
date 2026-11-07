@@ -25,7 +25,7 @@ def db_session():
         trans.rollback()
         connection.close()
 
-
+# Create a test client to run request actions (get, post)
 @pytest.fixture
 def client(db_session):
     def override_get_db():
@@ -37,7 +37,7 @@ def client(db_session):
     finally:
         del app.dependency_overrides[get_db]
 
-
+# return Monitor count
 def count_monitors(db_session):
     return db_session.scalar(select(func.count()).select_from(Monitor))
 
@@ -91,7 +91,18 @@ def test_create_monitor_preserves_custom_configuration(client, db_session):
     assert body['created_at'] is not None
     assert body['updated_at'] is not None
 
-## Testing fail safes all code below expect 422
+    saved_monitor = db_session.get(Monitor ,body['id'])
+    assert saved_monitor is not None
+    assert saved_monitor.url == custom_valid_json['url']
+    assert saved_monitor.name == custom_valid_json['name']
+    assert saved_monitor.is_enabled is custom_valid_json['is_enabled']
+    assert saved_monitor.check_interval_seconds == 120
+    assert saved_monitor.timeout_seconds == 10
+    assert saved_monitor.expected_status_code == 204
+
+# ------------------------------------------------------------------------------------
+## Testing fail safes all code below expect 422 
+# ------------------------------------------------------------------------------------
 
 def test_create_monitor_rejects_interval_below_minimum(client, db_session):
     count_before = count_monitors(db_session)
@@ -144,6 +155,7 @@ def test_create_monitor_rejects_timeout_equal_to_interval(client, db_session):
     assert count_before == count_after
     assert response.status_code == 422
 
+
 def test_create_monitor_rejects_default_timeout_equal_to_interval(client, db_session):
     count_before = count_monitors(db_session)
     response = client.post(
@@ -157,3 +169,30 @@ def test_create_monitor_rejects_default_timeout_equal_to_interval(client, db_ses
     assert response.status_code == 422
     assert count_before == count_after
 
+
+# ------------------------------------------------------------------------------------
+## Testing get requests for read_monitor
+# ------------------------------------------------------------------------------------
+
+def test_get_monitor_returns_saved_monitor(client, db_session):
+    monitor = Monitor(url = "https://example.com/health")
+    db_session.add(monitor)
+    db_session.flush()
+
+    response = client.get(f"/monitors/{monitor.id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == monitor.id
+    assert body["url"] == monitor.url
+
+def test_get_monitor_returns_404_when_missing(client, db_session):
+    #arrange - db does not have value from index (n)
+    monitor = Monitor(url = "https://example.com/health")
+    db_session.add(monitor)
+    db_session.flush()
+    missing_id = monitor.id
+    db_session.delete(monitor)
+    db_session.flush()
+    response = client.get(f"/monitors/{missing_id}")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Monitor not found"}

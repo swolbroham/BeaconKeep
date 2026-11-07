@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from app.schemas.monitor import MonitorCreate, MonitorRead
 from app.db.session import get_db
 from sqlalchemy.orm import Session
@@ -22,4 +22,11 @@ def create_monitor(monitor_in: MonitorCreate, db:Annotated[Session, Depends(get_
     db.add(monitor)
     db.commit()
     db.refresh(monitor)
+    return monitor
+
+@router.get("/monitors/{monitor_id}", response_model = MonitorRead)
+def read_monitor(monitor_id : int,  db:Annotated[Session, Depends(get_db)]):
+    monitor = db.get(Monitor, monitor_id)
+    if monitor is None: 
+        raise HTTPException(404, detail = "Monitor not found")
     return monitor
