@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from app.schemas.monitor import MonitorCreate, MonitorRead
 from app.db.session import get_db
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 from app.models.monitor import Monitor
 from typing import Annotated
 
@@ -23,6 +24,19 @@ def create_monitor(monitor_in: MonitorCreate, db:Annotated[Session, Depends(get_
     db.commit()
     db.refresh(monitor)
     return monitor
+
+@router.get("/monitors", response_model = list[MonitorRead])
+def read_monitors(
+    db:Annotated[Session, Depends(get_db)],
+    offset: int = Query(default = 0, ge=0),
+    limit: int = Query(default=10, ge=1, le=100)
+    ):
+    monitors = db.scalars(select(Monitor)
+                         .order_by(Monitor.id)
+                         .limit(limit)
+                         .offset(offset)).all()
+    
+    return monitors
 
 @router.get("/monitors/{monitor_id}", response_model = MonitorRead)
 def read_monitor(monitor_id : int,  db:Annotated[Session, Depends(get_db)]):

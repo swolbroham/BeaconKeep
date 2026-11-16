@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from app.db.session import engine, get_db
 from sqlalchemy.orm import Session
 from app.models.monitor import Monitor
-from sqlalchemy import func, select
+from sqlalchemy import func, select, delete
 from datetime import datetime
 
 
@@ -36,6 +36,37 @@ def client(db_session):
         yield TestClient(app)
     finally:
         del app.dependency_overrides[get_db]
+
+@pytest.fixture
+def empty_monitor_table(db_session):
+    db_session.execute(delete(Monitor))
+
+def create_monitors(db_session, count: int):
+    '''
+    Helper function: create_monitors
+    Description: Creates an array of monitors for testing
+    Parameters:
+        db_session - pytest db fixture
+        count - number of monitors to create
+    
+    '''
+    monitors = []
+    urls = [
+        f"https://example.com/monitor-{i}/health"
+        for i in range(1,count+1)
+    ]
+    for url in urls:
+        monitor = Monitor(
+            url= url
+        )
+        monitors.append(monitor)
+        db_session.add(monitor)
+    db_session.flush()
+
+    return monitors
+    
+
+
 
 # return Monitor count
 def count_monitors(db_session):
@@ -173,17 +204,6 @@ def test_create_monitor_rejects_default_timeout_equal_to_interval(client, db_ses
 # ------------------------------------------------------------------------------------
 ## Testing get requests for read_monitor
 # ------------------------------------------------------------------------------------
-# # this is a simple test using default config to test if it returns 200
-# def test_get_monitor_returns_saved_monitor(client, db_session):
-#     monitor = Monitor(url = "https://example.com/health")
-#     db_session.add(monitor)
-#     db_session.flush()
-
-#     response = client.get(f"/monitors/{monitor.id}")
-#     assert response.status_code == 200
-#     body = response.json()
-#     assert body["id"] == monitor.id
-#     assert body["url"] == monitor.url
 
 def test_get_monitor_returns_404_when_missing(client, db_session):
     #arrange - db does not have value from index (n)
@@ -222,3 +242,99 @@ def test_get_monitor_returns_200_when_existing(client, db_session):
     assert body['expected_status_code'] == monitor.expected_status_code
     assert datetime.fromisoformat(body['created_at']) == monitor.created_at
     assert datetime.fromisoformat(body['updated_at']) == monitor.updated_at
+
+
+def test_get_monitor_rejects_non_integer_id(client):
+    response = client.get("/monitors/abc")
+    assert response.status_code == 422
+
+def test_get_monitor_does_not_modify_data(client, db_session):
+    monitor = Monitor(
+        url= "https://example.com/payments/health",
+        name= "Payments API",
+        check_interval_seconds= 120,
+        timeout_seconds= 10,
+        expected_status_code= 204,
+        is_enabled= False
+    )
+    db_session.add(monitor)
+    db_session.flush()
+
+    monitor_updated_at = monitor.updated_at
+    monitor_count = count_monitors(db_session)
+    monitor_id = monitor.id
+
+    response = client.get(f'/monitors/{monitor_id}')
+    assert response.status_code == 200
+    db_session.refresh(monitor)
+    body = response.json()
+    assert monitor_updated_at == monitor.updated_at
+    assert monitor_count == count_monitors(db_session)
+
+# ------------------------------------------------------------------------------------
+## Testing get requests for read_monitors
+# ------------------------------------------------------------------------------------
+
+def test_list_monitors_returns_records_in_id_order(client, db_session, empty_monitor_table):
+    monitor1 = Monitor(
+        url= "https://example.com/payments/health"
+    )
+    monitor2 = Monitor(
+        url= "https://example.com/orders/health"
+    )
+    monitor3 = Monitor(
+        url= "https://example.com/users/health"
+    )
+    db_session.add(monitor1)
+    db_session.add(monitor2)
+    db_session.add(monitor3)
+    db_session.flush()
+
+    expected_ids = [monitor1.id, monitor2.id, monitor3.id]
+    # ensure the values are sorted
+    sorted_expected_ids = sorted(expected_ids)
+
+    response = client.get("/monitors")
+    assert response.status_code == 200
+    body = response.json()
+    actual_ids = [monitor['id'] for monitor in body]
+    assert actual_ids == sorted_expected_ids
+    
+
+def test_list_monitors_applies_limit_and_offset(client, db_session, empty_monitor_table):
+    monitor1 = Monitor(
+        url= "https://example.com/payments/health"
+    )
+    monitor2 = Monitor(
+        url= "https://example.com/orders/health"
+    )
+    monitor3 = Monitor(
+        url= "https://example.com/users/health"
+    )
+    monitor4 = Monitor(
+        url= "https://example.com/profile/health"
+    )
+
+    db_session.add(monitor1)
+    db_session.add(monitor2)
+    db_session.add(monitor3)
+    db_session.add(monitor4)
+    db_session.flush()
+
+    response = client.get("/monitors", params = {"limit":2, "offset": 1})
+    assert response.status_code == 200
+
+    expected_ids = [monitor2.id, monitor3.id]
+    sorted_expected_ids = sorted(expected_ids)
+    body = response.json()
+    actual_ids = [monitor['id'] for monitor in body]
+    assert actual_ids == sorted_expected_ids
+
+def test_list_monitors_uses_default_limit(client, db_session, empty_monitor_table):
+    monitors = create_monitors(db_session, count = 11)
+    response = client.get("/monitors")
+    assert response.status_code == 200
+    body = response.json()
+    sorted_expected_ids = sorted([monitor.id for monitor in monitors[0:10]])
+    actual_ids = [monitor['id'] for monitor in body]
+    assert actual_ids == sorted_expected_ids
